@@ -19,6 +19,7 @@ DecoderState::DecoderState(const std::vector<std::string> &vocabulary,
                            double cutoff_prob,
                            size_t cutoff_top_n,
                            size_t blank_id,
+                           const std::string &space_symbol,
                            int log_input,
                            Scorer *ext_scorer)
   : abs_time_step(0)
@@ -26,18 +27,30 @@ DecoderState::DecoderState(const std::vector<std::string> &vocabulary,
   , cutoff_prob(cutoff_prob)
   , cutoff_top_n(cutoff_top_n)
   , blank_id(blank_id)
+  , space_symbol(space_symbol)
   , log_input(log_input)
   , vocabulary(vocabulary)
   , ext_scorer(ext_scorer)
 {
+//  // assign space id
+//  auto it = std::find(vocabulary.begin(), vocabulary.end(), " ");
+//  // if no space in vocabulary
+//  if (it == vocabulary.end()) {
+//    space_id = -2;
+//  } else {
+//    space_id = std::distance(vocabulary.begin(), it);
+//  }
+
   // assign space id
-  auto it = std::find(vocabulary.begin(), vocabulary.end(), " ");
+  // Changed by Gideon from the blank symbol " " to a custom symbol specified as argument
+  auto it = std::find(vocabulary.begin(), vocabulary.end(), space_symbol);
+  //auto it = std::find(vocabulary.begin(), vocabulary.end(), " ");
+  int space_id = it - vocabulary.begin();
   // if no space in vocabulary
-  if (it == vocabulary.end()) {
+  if ((size_t)space_id >= vocabulary.size()) {
     space_id = -2;
-  } else {
-    space_id = std::distance(vocabulary.begin(), it);
   }
+
 
   // init prefixes' root
   root.score = root.log_prob_b_prev = 0.0;
@@ -198,7 +211,7 @@ DecoderState::decode()
       std::vector<int> timesteps;
       prefixes_copy[i]->get_path_vec(output, timesteps);
       auto prefix_length = output.size();
-      auto words = ext_scorer->split_labels(output);
+      auto words = ext_scorer->split_labels(output, space_symbol);
       // remove word insert
       approx_ctc = approx_ctc - prefix_length * ext_scorer->beta;
       // remove language model weight:
@@ -217,11 +230,12 @@ std::vector<std::pair<double, Output>> ctc_beam_search_decoder(
     double cutoff_prob,
     size_t cutoff_top_n,
     size_t blank_id,
+    const std::string &space_symbol,
     int log_input,
     Scorer *ext_scorer)
 {
   DecoderState state(vocabulary, beam_size, cutoff_prob, cutoff_top_n, blank_id,
-                     log_input, ext_scorer);
+                     space_symbol, log_input, ext_scorer);
   state.next(probs_seq);
   return state.decode();
 }
@@ -242,6 +256,7 @@ std::vector<std::pair<double, Output>>  ctc_beam_search_decoder_with_given_state
 
     }
 
+
 std::vector<std::vector<std::pair<double, Output>>>
 ctc_beam_search_decoder_batch(
     const std::vector<std::vector<std::vector<double>>> &probs_split,
@@ -251,6 +266,7 @@ ctc_beam_search_decoder_batch(
     double cutoff_prob,
     size_t cutoff_top_n,
     size_t blank_id,
+    const std::string &space_symbol,
     int log_input,
     Scorer *ext_scorer)
 {
@@ -270,6 +286,7 @@ ctc_beam_search_decoder_batch(
                                   cutoff_prob,
                                   cutoff_top_n,
                                   blank_id,
+                                  space_symbol,
                                   log_input,
                                   ext_scorer));
   }
@@ -297,7 +314,7 @@ std::vector<std::vector<std::pair<double, Output>>> ctc_beam_search_decoder_batc
   ThreadPool pool(num_processes);
   // number of samples
   size_t batch_size = probs_split.size();
-  
+
 
   // enqueue the tasks of decoding
   std::vector<std::future<std::vector<std::pair<double, Output>>>> res;

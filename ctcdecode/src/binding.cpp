@@ -32,6 +32,22 @@ boost::python::list std_vector_to_py_list(std::vector<T> vector) {
     return list;
 }
 
+
+int utf8_to_utf8_char_vec(const char* labels, std::vector<std::string>& new_vocab) {
+    const char* str_i = labels;
+    const char* end = str_i + strlen(labels)+1;
+    do {
+        char u[5] = {0,0,0,0,0};
+        uint32_t code = utf8::next(str_i, end);
+        if (code == 0) {
+            continue;
+        }
+        utf8::append(code, u);
+        new_vocab.push_back(std::string(u));
+    }
+    while (str_i < end);
+}
+
 int beam_decode(at::Tensor th_probs,
                 at::Tensor th_seq_lens,
                 std::vector<std::string> new_vocab,
@@ -41,7 +57,8 @@ int beam_decode(at::Tensor th_probs,
                 double cutoff_prob,
                 size_t cutoff_top_n,
                 size_t blank_id,
-                bool log_input,
+		        const std::string &space_symbol,
+		        bool log_input,
                 void *scorer,
                 at::Tensor th_output,
                 at::Tensor th_timesteps,
@@ -75,7 +92,9 @@ int beam_decode(at::Tensor th_probs,
 
 
     std::vector<std::vector<std::pair<double, Output>>> batch_results =
-    ctc_beam_search_decoder_batch(inputs, new_vocab, beam_size, num_processes, cutoff_prob, cutoff_top_n, blank_id, log_input, ext_scorer);
+    ctc_beam_search_decoder_batch(
+        inputs, new_vocab, beam_size, num_processes, cutoff_prob, cutoff_top_n,
+        blank_id, space_symbol, log_input, ext_scorer);
     auto outputs_accessor = th_output.accessor<int, 3>();
     auto timesteps_accessor =  th_timesteps.accessor<int, 3>();
     auto scores_accessor =  th_scores.accessor<float, 2>();
@@ -109,14 +128,17 @@ int paddle_beam_decode(at::Tensor th_probs,
                        double cutoff_prob,
                        size_t cutoff_top_n,
                        size_t blank_id,
+                       const char* space_symbol,
                        int log_input,
                        at::Tensor th_output,
                        at::Tensor th_timesteps,
                        at::Tensor th_scores,
-                       at::Tensor th_out_length){
-
+                       at::Tensor th_out_length)
+{
+    std::string space_symbol_string(space_symbol);
     return beam_decode(th_probs, th_seq_lens, labels, vocab_size, beam_size, num_processes,
-                cutoff_prob, cutoff_top_n, blank_id, log_input, NULL, th_output, th_timesteps, th_scores, th_out_length);
+                cutoff_prob, cutoff_top_n, blank_id, space_symbol_string, log_input, NULL,
+                th_output, th_timesteps, th_scores, th_out_length);
 }
 
 int paddle_beam_decode_lm(at::Tensor th_probs,
@@ -128,25 +150,16 @@ int paddle_beam_decode_lm(at::Tensor th_probs,
                           double cutoff_prob,
                           size_t cutoff_top_n,
                           size_t blank_id,
+                          const char* space_symbol,
                           int log_input,
                           void *scorer,
                           at::Tensor th_output,
                           at::Tensor th_timesteps,
                           at::Tensor th_scores,
                           at::Tensor th_out_length){
-
+    std::string space_symbol_string(space_symbol);
     return beam_decode(th_probs, th_seq_lens, labels, vocab_size, beam_size, num_processes,
-                cutoff_prob, cutoff_top_n, blank_id, log_input, scorer, th_output, th_timesteps, th_scores, th_out_length);
-}
-
-
-void* paddle_get_scorer(double alpha,
-                        double beta,
-                        const char* lm_path,
-                        vector<std::string> new_vocab,
-                        int vocab_size) {
-    Scorer* scorer = new Scorer(alpha, beta, lm_path, new_vocab);
-    return static_cast<void*>(scorer);
+                cutoff_prob, cutoff_top_n, blank_id,space_symbol_string, log_input, scorer, th_output, th_timesteps, th_scores, th_out_length);
 }
 
 
@@ -177,12 +190,12 @@ std::pair<torch::Tensor, torch::Tensor> beam_decode_with_given_state(at::Tensor 
             }
         }
         inputs.push_back(temp);
-        
+
     }
 
     std::vector<std::vector<std::pair<double, Output>>> batch_results =
     ctc_beam_search_decoder_batch_with_states(inputs, num_processes, states, is_eos_s);
-    
+
     int max_result_size = 0;
     int max_output_tokens_size = 0;
     for (int b = 0; b < batch_results.size(); ++b){
@@ -194,13 +207,13 @@ std::pair<torch::Tensor, torch::Tensor> beam_decode_with_given_state(at::Tensor 
             std::pair<double, Output> n_path_result = results[p];
             Output output = n_path_result.second;
             std::vector<int> output_tokens = output.tokens;
-            
+
             if (output_tokens.size() > max_output_tokens_size) {
             max_output_tokens_size = output_tokens.size();
         }
         }
         }
-    
+
     torch::Tensor output_tokens_tensor = torch::randint(1, {batch_results.size(), max_result_size, max_output_tokens_size});
     torch::Tensor output_timesteps_tensor = torch::randint(1, {batch_results.size(), max_result_size, max_output_tokens_size});
 
@@ -248,6 +261,7 @@ void* paddle_get_decoder_state(const std::vector<std::string> &vocabulary,
                                double cutoff_prob,
                                size_t cutoff_top_n,
                                size_t blank_id,
+                               const std::string &space_symbol_string,
                                int log_input,
                                 void* scorer)
 {
@@ -256,8 +270,25 @@ void* paddle_get_decoder_state(const std::vector<std::string> &vocabulary,
     if (scorer != NULL) {
         ext_scorer = static_cast<Scorer *>(scorer);
     }
-    DecoderState* state = new DecoderState(vocabulary, beam_size, cutoff_prob, cutoff_top_n, blank_id, log_input, ext_scorer);
+    DecoderState* state = new DecoderState(vocabulary, beam_size, cutoff_prob, cutoff_top_n,
+        blank_id, space_symbol_string, log_input, ext_scorer);
     return static_cast<void*>(state);
+}
+
+void* paddle_get_scorer(double alpha,
+                        double beta,
+                        const char* lm_path,
+                        vector<std::string> new_vocab,
+                        int vocab_size,
+                        //const char* space_symbol)
+                        std::string space_symbol_string)
+                        {
+    //std::vector<std::string> new_vocab;
+    //utf8_to_utf8_char_vec(labels, new_vocab);
+    // Create a string object from the char* space_symbol
+    //std::string space_symbol_string(space_symbol);
+    Scorer* scorer = new Scorer(alpha, beta, lm_path, new_vocab, space_symbol_string);
+    return static_cast<void*>(scorer);
 }
 
 void paddle_release_state(void* state) {
