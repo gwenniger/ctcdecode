@@ -14,7 +14,10 @@ The below installation also works for Google Colab.
 ```bash
 # get the code
 git clone --recursive https://github.com/parlance/ctcdecode.git
-cd ctcdecode && pip install .
+#cd ctcdecode && pip install .
+# To find the installed version of torch, we compile without build isolation
+cd ctcdecode && pip install -v --no-build-isolation .
+
 ```
 
 ## How to Use
