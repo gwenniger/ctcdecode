@@ -11,12 +11,31 @@ KenLM language modeling support is also optionally included, and enabled by defa
 
 The below installation also works for Google Colab.
 
+## Support for c++17 and newer versions of python and PyTorch
+The code has been adapted to support newer version of python/PyTorch
+inspired on https://github.com/WayenVan/ctcdecode, but taking a slightly different approach here.
+Noting that at the core, the required changes are only some changes to kenlm and replacing 
+the use of a locally downloaded version of boost by a newer version of boost (i.e. from 
+the linux apt package manager), this version fixes things with much more minimal changes with respect 
+to the original repository. 
+It does so by making a adapted version of kenlm, with only the minimal required changes to that, 
+and the minimal required changes to ctcdecode itself, in particular to the setup.py script.
+
 ```bash
 # get the code
-git clone --recursive https://github.com/parlance/ctcdecode.git
+#git clone --recursive https://github.com/parlance/ctcdecode.git
+git clone --recursive https://github.com/gwenniger/ctcdecode.git
 #cd ctcdecode && pip install .
+
+# Go into the ctcdecode folder
+cd ctcdecode
+# Go into the kenlm folder and checkout the ctcdecode-fix branch
+cd third_party/kenlm
+git checkout ctcdecode-fix
+# Back up to the ctcdecode folder
+cd ../..  
 # To find the installed version of torch, we compile without build isolation
-cd ctcdecode && pip install -v --no-build-isolation .
+pip install -v --no-build-isolation .
 
 ```
 
