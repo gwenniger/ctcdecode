@@ -27,10 +27,10 @@ download_extract(
     "https://github.com/parlance/ctcdecode/releases/download/v1.0/openfst-1.6.7.tar.gz",
     "third_party/openfst-1.6.7.tar.gz",
 )
-download_extract(
-    "https://github.com/parlance/ctcdecode/releases/download/v1.0/boost_1_67_0.tar.gz",
-    "third_party/boost_1_67_0.tar.gz",
-)
+# download_extract(
+#     "https://github.com/parlance/ctcdecode/releases/download/v1.0/boost_1_67_0.tar.gz",
+#     "third_party/boost_1_67_0.tar.gz",
+# )
 
 for file in ["third_party/kenlm/setup.py", "third_party/ThreadPool/ThreadPool.h"]:
     if not os.path.exists(file):
@@ -54,7 +54,8 @@ def compile_test(header, library):
     return os.system(command) == 0
 
 
-compile_args = ["-O3", "-DKENLM_MAX_ORDER=6", "-std=c++14", "-fPIC"]
+#compile_args = ["-O3", "-DKENLM_MAX_ORDER=6", "-std=c++14", "-fPIC"]
+compile_args = ["-O3", "-DKENLM_MAX_ORDER=6", "-std=c++17", "-fPIC"]
 ext_libs = []
 if compile_test("zlib.h", "z"):
     compile_args.append("-DHAVE_ZLIB")
@@ -68,7 +69,10 @@ if compile_test("lzma.h", "lzma"):
     compile_args.append("-DHAVE_XZLIB")
     ext_libs.append("lzma")
 
-third_party_libs = ["kenlm", "openfst-1.6.7/src/include", "ThreadPool", "boost_1_67_0", "utf8"]
+#third_party_libs = ["kenlm", "openfst-1.6.7/src/include", "ThreadPool", "boost_1_67_0", "utf8"]
+
+# Use a local (and more recent) boost version installed through the (linux) package manager
+third_party_libs = ["kenlm", "openfst-1.6.7/src/include", "ThreadPool", "boost", "utf8"]
 compile_args.extend(["-DINCLUDE_KENLM", "-DKENLM_MAX_ORDER=6"])
 lib_sources = (
     glob.glob("third_party/kenlm/util/*.cc")
